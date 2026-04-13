@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, usePage, router } from "@inertiajs/react";
-import { Menu, X, Users, LayoutDashboard, Gift, LogOut } from "lucide-react";
+import { Menu, X, Users, LayoutDashboard, Gift, LogOut, Lollipop } from "lucide-react";
 
 export default function AdminLayout({ children }) {
     const { auth } = usePage().props;
@@ -90,6 +90,16 @@ export default function AdminLayout({ children }) {
                         <div className="flex items-center gap-2">
                             <Users size={16} />
                             Manage Users
+                        </div>
+                    </Link>
+                    
+                    <Link
+                        href={route("admin.redemptions.index")}
+                        className={isActive("admin.redemptions.index")}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Lollipop size={16} />
+                            Redemptions
                         </div>
                     </Link>
 

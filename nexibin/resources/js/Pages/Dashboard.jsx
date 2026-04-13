@@ -1,475 +1,631 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { usePage, Link, Head, router } from "@inertiajs/react";
 import { Html5Qrcode } from "html5-qrcode";
 import axios from "axios";
 
+/* ─── HELPERS ─────────────────────────────────────────────── */
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good Morning";
+  if (h < 18) return "Good Afternoon";
+  return "Good Evening";
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return "";
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+  if (diff < 60)   return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400)return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 172800) return "yesterday";
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function groupByDay(scans) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const groups = { Today: [], Yesterday: [], Earlier: [] };
+  scans.forEach((s) => {
+    const d = new Date(s.created_at); d.setHours(0,0,0,0);
+    if (d.getTime() === today.getTime())     groups.Today.push(s);
+    else if (d.getTime() === yesterday.getTime()) groups.Yesterday.push(s);
+    else groups.Earlier.push(s);
+  });
+  return groups;
+}
+
+function initials(name = "") {
+  return name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
+/* ─── TOAST ───────────────────────────────────────────────── */
+
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+  const add = useCallback((msg, type = "success") => {
+    const id = Date.now();
+    setToasts((p) => [...p, { id, msg, type }]);
+    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3800);
+  }, []);
+  return { toasts, add };
+}
+
+function ToastStack({ toasts }) {
+  return (
+    <div className="fixed top-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-sm font-bold text-white pointer-events-auto
+            ${t.type === "success" ? "bg-emerald-500" : "bg-red-500"}`}
+          style={{ animation: "slideInRight .25s ease" }}
+        >
+          <span>{t.type === "success" ? "✓" : "✕"}</span>{t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── PROGRESS BAR ────────────────────────────────────────── */
+
+function ProgressBar({ pct, color = "#16a34a" }) {
+  return (
+    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div
+        className="h-full rounded-full transition-all duration-700"
+        style={{ width: `${Math.min(pct, 100)}%`, background: color }}
+      />
+    </div>
+  );
+}
+
+function progressColor(pct) {
+  if (pct >= 80) return "#16a34a";
+  if (pct >= 45) return "#d97706";
+  return "#dc2626";
+}
+
+/* ─── ACHIEVEMENT BADGE ───────────────────────────────────── */
+
+function AchievementPop({ text, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 3200); return () => clearTimeout(t); }, [onDone]);
+  return (
+    <div
+      className="fixed inset-x-4 bottom-24 z-[150] flex items-center gap-3 bg-[#1B1F5E] text-white px-5 py-4 rounded-2xl shadow-2xl"
+      style={{ animation: "slideUp .35s ease" }}
+    >
+      <span className="text-2xl">🏆</span>
+      <div>
+        <p className="font-extrabold text-sm">Achievement Unlocked!</p>
+        <p className="text-xs text-blue-200 mt-0.5">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── REWARD CARD (horizontal scroll) ────────────────────── */
+
+function RewardCard({ reward, userPoints }) {
+  const canRedeem = userPoints >= reward.points_required && reward.stock > 0;
+  const pct = Math.min((userPoints / reward.points_required) * 100, 100);
+
+  return (
+    <Link
+      href={route("rewards.index")}
+      className="flex-shrink-0 w-44 bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 block"
+    >
+      <div className="relative h-24 overflow-hidden">
+        <img
+          src={reward.image ? `/storage/${reward.image}` : "https://placehold.co/200x100/e2e8f0/94a3b8?text=Reward"}
+          alt={reward.name}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+        {canRedeem && (
+          <div className="absolute top-2 left-2">
+            <span className="bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">✓ Ready</span>
+          </div>
+        )}
+      </div>
+      <div className="p-3">
+        <p className="font-bold text-[#1B1F5E] text-xs mb-0.5 truncate">{reward.name}</p>
+        <p className="text-[10px] text-slate-400 mb-2">{reward.points_required.toLocaleString()} pts</p>
+        <div className="mb-2">
+          <ProgressBar pct={pct} color={progressColor(pct)} />
+        </div>
+        <div className={`w-full text-center py-1.5 rounded-lg text-[10px] font-bold transition-all
+          ${canRedeem ? "bg-[#1B1F5E] text-white" : "bg-slate-100 text-slate-400"}`}
+        >
+          {canRedeem ? "Redeem Now" : "View"}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* ─── ACTIVITY ITEM ───────────────────────────────────────── */
+
+function ActivityItem({ scan }) {
+  const pts = scan.trash_event?.points ?? 0;
+  const name = scan.trash_event?.name ?? "Points acquired";
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">♻️</div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm text-slate-800 truncate">{name}</p>
+        <p className="text-[11px] text-slate-400">{timeAgo(scan.created_at)}</p>
+      </div>
+      <span className="text-emerald-600 font-extrabold text-sm whitespace-nowrap">+{pts} pts</span>
+    </div>
+  );
+}
+
+/* ─── QR SCANNER MODAL ────────────────────────────────────── */
+
+function ScannerModal({ onClose, onSuccess, onError }) {
+  const qrRef   = useRef(null);
+  const doneRef = useRef(false);
+  const [processing, setProcessing] = useState(false);
+  const [localErr, setLocalErr]     = useState(null);
+
+  useEffect(() => {
+    let qr;
+    const start = async () => {
+      try {
+        qr = new Html5Qrcode("qr-reader");
+        qrRef.current = qr;
+        await qr.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          async (decoded) => {
+            if (doneRef.current || processing) return;
+            doneRef.current = true;
+            setProcessing(true);
+            setLocalErr(null);
+            let token = decoded;
+            if (decoded.includes("?")) {
+              try { token = new URL(decoded).searchParams.get("token") || decoded; } catch {}
+            }
+            try {
+              const res = await axios.post(route("qr.scan"), { code: token });
+              const data = res.data;
+              if (data.success) {
+                await stop();
+                onSuccess({ points: data.points, event: data.event });
+              } else {
+                setLocalErr(data.message || "Invalid QR code.");
+                setProcessing(false);
+                setTimeout(() => { doneRef.current = false; }, 1500);
+              }
+            } catch (err) {
+              const msg = err?.response?.data?.message ?? "Scan failed. Please try again.";
+              setLocalErr(msg);
+              setProcessing(false);
+              setTimeout(() => { doneRef.current = false; }, 1500);
+            }
+          },
+          () => {}
+        );
+      } catch { setLocalErr("Camera could not start."); }
+    };
+
+    const stop = async () => {
+      try { await qrRef.current?.stop(); await qrRef.current?.clear(); } catch {}
+      qrRef.current = null;
+    };
+
+    setTimeout(start, 200);
+    return () => { stop(); };
+  }, []);
+
+  const handleClose = async () => {
+    try { await qrRef.current?.stop(); await qrRef.current?.clear(); } catch {}
+    qrRef.current = null;
+    onClose();
+  };
+
+  const retry = () => { setLocalErr(null); doneRef.current = false; setProcessing(false); };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100]"
+      style={{ animation: "fadeIn .2s ease" }}>
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
+        style={{ animation: "slideUp .3s ease" }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div>
+            <h2 className="font-extrabold text-[#1B1F5E] text-lg">Scan QR Code</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Align the code inside the box</p>
+          </div>
+          <button onClick={handleClose}
+            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-all">
+            ✕
+          </button>
+        </div>
+
+        {/* Scanner */}
+        <div className="relative mx-5 mb-2 rounded-2xl overflow-hidden bg-black">
+          <div id="qr-reader" className="w-full" />
+
+          {/* Scanning overlay guide */}
+          {!localErr && !processing && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-52 h-52 border-2 border-white/60 rounded-2xl relative">
+                <span className="absolute -top-0.5 -left-0.5 w-5 h-5 border-t-2 border-l-2 border-blue-400 rounded-tl-xl" />
+                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 border-t-2 border-r-2 border-blue-400 rounded-tr-xl" />
+                <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 border-b-2 border-l-2 border-blue-400 rounded-bl-xl" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 border-b-2 border-r-2 border-blue-400 rounded-br-xl" />
+                <div className="absolute left-0 right-0 h-0.5 bg-blue-400/70 top-1/2"
+                  style={{ animation: "scanLine 1.8s ease-in-out infinite" }} />
+              </div>
+            </div>
+          )}
+
+          {/* Processing overlay */}
+          {processing && (
+            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+              <svg className="animate-spin w-10 h-10 text-white mb-3" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"
+                  strokeDasharray="31.4" strokeDashoffset="10" />
+              </svg>
+              <p className="text-white text-sm font-bold">Processing…</p>
+            </div>
+          )}
+        </div>
+
+        {/* Error state */}
+        {localErr && (
+          <div className="mx-5 mb-3 bg-red-50 border border-red-100 rounded-xl p-4 text-center">
+            <p className="text-red-600 font-bold text-sm mb-1">⚠️ Scan Failed</p>
+            <p className="text-red-500 text-xs mb-3">{localErr}</p>
+            <button onClick={retry}
+              className="px-5 py-2 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-all active:scale-95">
+              Try Again
+            </button>
+          </div>
+        )}
+
+        <div className="px-5 pb-6">
+          <button onClick={handleClose}
+            className="w-full py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-all">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── SUCCESS MODAL ───────────────────────────────────────── */
+
+function SuccessModal({ data, onDone }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
+      style={{ animation: "fadeIn .2s ease" }}>
+      <div className="bg-white rounded-3xl w-full max-w-xs p-7 text-center shadow-2xl"
+        style={{ animation: "scaleIn .25s ease" }}>
+        <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✅</div>
+        <h2 className="font-extrabold text-emerald-600 text-xl mb-1">Scan Successful!</h2>
+        <p className="text-slate-500 text-sm mb-2">{data.event}</p>
+        <div className="bg-emerald-50 rounded-2xl py-4 px-6 mb-5">
+          <p className="text-4xl font-extrabold text-emerald-600">+{data.points}</p>
+          <p className="text-xs text-emerald-500 font-semibold mt-1">points earned</p>
+        </div>
+        <button onClick={onDone}
+          className="w-full py-3.5 bg-[#1B1F5E] text-white font-bold rounded-xl hover:bg-[#2d3494] transition-all active:scale-[.98]">
+          Awesome!
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN DASHBOARD ──────────────────────────────────────── */
+
 export default function Dashboard() {
-
-  /* ===============================================
-     GET DATA FROM INERTIA PROPS
-  =============================================== */
-
   const { auth, rewards = [], recentScans = [] } = usePage().props;
   const user = auth.user;
 
-  /* ===============================================
-     STATE VARIABLES
-  =============================================== */
-
-  const [points, setPoints] = useState(user.points);
-  const [showMenu, setShowMenu] = useState(false);
-
+  const [points,      setPoints]      = useState(Number(user.points));
+  const [showMenu,    setShowMenu]    = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [scanSuccess, setScanSuccess] = useState(null);
-  const [scanError, setScanError] = useState(null);
+  const [scanResult,  setScanResult]  = useState(null);   // success data
+  const [achievement, setAchievement] = useState(null);
+  const [scans,       setScans]       = useState(recentScans);
 
-  /* ===============================================
-     QR SCANNER REFERENCES
-  =============================================== */
+  const { toasts, add: toast } = useToast();
 
-  const qrRef = useRef(null);
-  const scannedRef = useRef(false);
-  const restartTimer = useRef(null);
+  /* ── Closest reward progress ── */
+  const nextReward = useMemo(() => {
+    const locked = rewards.filter((r) => r.points_required > points && r.stock > 0);
+    if (!locked.length) return null;
+    return locked.reduce((a, b) => (b.points_required - points) < (a.points_required - points) ? b : a);
+  }, [rewards, points]);
 
-  /* ===============================================
-     GREETING
-  =============================================== */
+  const nextPct = nextReward
+    ? Math.min((points / nextReward.points_required) * 100, 100) : 100;
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning,";
-    if (hour < 18) return "Good Afternoon,";
-    return "Good Evening,";
-  };
+  /* ── Recommended reward ── */
+  const recommended = useMemo(() => {
+    const redeemable = rewards.filter((r) => points >= r.points_required && r.stock > 0);
+    if (redeemable.length) return { reward: redeemable[0], canRedeem: true };
+    if (nextReward) return { reward: nextReward, canRedeem: false };
+    return null;
+  }, [rewards, points, nextReward]);
 
-  /* ===============================================
-     STOP SCANNER
-     Prevent camera freezing
-  =============================================== */
+  /* ── Grouped activity ── */
+  const grouped = useMemo(() => groupByDay(scans), [scans]);
 
-  const stopScanner = async () => {
-
-    if (!qrRef.current) return;
-
-    try {
-      await qrRef.current.stop();
-      await qrRef.current.clear();
-    } catch {}
-
-    qrRef.current = null;
-    scannedRef.current = false;
-
-  };
-
-  /* ===============================================
-     QR SCANNER INITIALIZATION
-  =============================================== */
-
-  useEffect(() => {
-
-    if (!showScanner) return;
-
-    const startScanner = async () => {
-
-      try {
-
-        const qr = new Html5Qrcode("reader");
-        qrRef.current = qr;
-
-        await qr.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-
-          async (decodedText) => {
-
-            if (scannedRef.current) return;
-            scannedRef.current = true;
-
-            setScanError(null);
-
-            /* Extract token if QR contains URL */
-
-            let token = decodedText;
-
-            if (decodedText.includes("?")) {
-              try {
-                const url = new URL(decodedText);
-                token = url.searchParams.get("token") || decodedText;
-              } catch {}
-            }
-
-            try {
-
-              const res = await axios.post(route("qr.scan"), {
-                code: token
-              });
-
-              const data = res.data;
-
-              if (data.success) {
-
-                setScanSuccess({
-                  points: data.points,
-                  event: data.event
-                });
-
-                setPoints(prev => prev + data.points);
-
-              } else {
-
-                setScanError(data.message || "Invalid QR code");
-
-              }
-
-            } catch (error) { 
-                if (error.response && error.response.data && error.response.data.message) { 
-                    /* Show real backend message */ 
-                    setScanError(error.response.data.message); } 
-                else { 
-                    /* Unknown error */ 
-                    setScanError("Scan failed. Please try again."); 
-                } 
-            }
-
-            /* Restart scanner automatically */
-
-            restartTimer.current = setTimeout(() => {
-              scannedRef.current = false;
-            }, 1500);
-
-          },
-
-          () => {}
-
-        );
-
-      } catch {
-
-        setScanError("Camera could not start.");
-
-      }
-
-    };
-
-    setTimeout(startScanner, 200);
-
-    return () => {
-      clearTimeout(restartTimer.current);
-      stopScanner();
-    };
-
-  }, [showScanner]);
-
-  /* ===============================================
-     SCANNER CONTROLS
-  =============================================== */
-
-  const openScanner = () => {
-    setScanError(null);
-    setScanSuccess(null);
-    setShowScanner(true);
-  };
-
-  const closeScanner = async () => {
-    clearTimeout(restartTimer.current);
-    await stopScanner();
+  /* ── Scan success handler ── */
+  const handleScanSuccess = useCallback((data) => {
     setShowScanner(false);
-  };
+    setScanResult(data);
+    setPoints((p) => p + data.points);
+    // Achievement checks
+    const newTotal = points + data.points;
+    if (scans.length === 0) setAchievement("First Scan! You earned your first points.");
+    else if (newTotal >= 100 && points < 100) setAchievement("100 Points milestone reached!");
+  }, [points, scans]);
 
-  /* ===============================================
-     REWARD PREVIEW
-  =============================================== */
+  const handleSuccessDone = useCallback(() => {
+    setScanResult(null);
+    router.reload({ only: ["recentScans"] });
+  }, []);
 
-  const previewRewards = rewards.slice(0, 4);
+  /* ── Close menu on outside click ── */
+  useEffect(() => {
+    if (!showMenu) return;
+    const h = () => setShowMenu(false);
+    setTimeout(() => document.addEventListener("click", h), 0);
+    return () => document.removeEventListener("click", h);
+  }, [showMenu]);
 
-  /* ===============================================
-     UI
-  =============================================== */
+  /* ── Preview rewards ── */
+  const previewRewards = rewards.slice(0, 8);
 
   return (
-
     <>
       <Head title="Dashboard" />
 
-      <div className="min-h-screen bg-gray-100 flex justify-center p-4">
+      <style>{`
+        @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+        @keyframes slideUp   { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
+        @keyframes scaleIn   { from{transform:scale(.9);opacity:0} to{transform:scale(1);opacity:1} }
+        @keyframes slideInRight { from{transform:translateX(30px);opacity:0} to{transform:translateX(0);opacity:1} }
+        @keyframes fadeUpIn  { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes scanLine  { 0%,100%{top:10%} 50%{top:85%} }
+        @keyframes pulse-slow { 0%,100%{opacity:1} 50%{opacity:.6} }
+        .fade-up { animation: fadeUpIn .4s ease both; }
+        .s1{animation-delay:.05s} .s2{animation-delay:.1s} .s3{animation-delay:.15s}
+        .s4{animation-delay:.2s}  .s5{animation-delay:.25s}.s6{animation-delay:.3s}
+        .snap-x { scroll-snap-type: x mandatory; }
+        .snap-start { scroll-snap-align: start; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
 
-        <div className="w-full max-w-3xl">
+      <ToastStack toasts={toasts} />
+      {achievement && <AchievementPop text={achievement} onDone={() => setAchievement(null)} />}
 
-          {/* =====================================
-              HEADER
-          ===================================== */}
+      <div className="min-h-screen bg-slate-50 relative isolate">
 
-          <div className="flex justify-between items-center mb-6">
-
-            <div>
-              <p className="text-gray-500 text-sm">{getGreeting()}</p>
-              <h2 className="text-2xl font-bold text-[#1B1F5E]">{user.name}</h2>
-            </div>
-
-            <div className="flex gap-3">
-
-              {/* SCANNER BUTTON */}
-
-              <button
-                onClick={openScanner}
-                className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-xl"
-              >
-                📷
-              </button>
-
-              {/* PROFILE MENU */}
-
-              <div className="relative">
-
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="w-12 h-12 bg-blue-100 rounded-full font-bold text-[#1B1F5E]"
-                >
-                  {user.name.substring(0,2).toUpperCase()}
-                </button>
-
-                {showMenu && (
-
-                  <div className="absolute right-0 mt-2 w-40 bg-white shadow rounded-xl">
-
-                    <Link
-                      href={route("profile.edit")}
-                      className="block px-4 py-2 hover:bg-gray-100"
-                    >
-                      Profile
-                    </Link>
-
-                    <Link
-                      href={route("logout")}
-                      method="post"
-                      as="button"
-                      className="block w-full text-left px-4 py-2 hover:bg-gray-100"
-                    >
-                      Logout
-                    </Link>
-
-                  </div>
-
-                )}
-
+        {/* ── TOP NAV ── */}
+        <div className="bg-[#1B1F5E] pt-safe">
+          <div className="max-w-2xl mx-auto px-4 pt-5 pb-8">
+            <div className="flex items-center justify-between mb-6 fade-up">
+              <div>
+                <p className="text-blue-300 text-xs font-semibold">{getGreeting()}</p>
+                <h1 className="text-white text-xl font-extrabold leading-tight">{user.name}</h1>
               </div>
 
-            </div>
+              <div className="flex items-center gap-3">
 
-          </div>
-
-          {/* =====================================
-              POINTS CARD
-          ===================================== */}
-
-          <div className="bg-[#1B1F5E] text-white p-6 rounded-3xl mb-6 shadow">
-
-            <p className="text-sm opacity-80">Total Points</p>
-
-            <p className="text-4xl font-bold mt-1">
-              {Number(points).toLocaleString()}
-              <span className="text-lg"> pts</span>
-            </p>
-
-          </div>
-
-          {/* =====================================
-              REWARDS
-          ===================================== */}
-
-          <div className="flex justify-between items-center mb-4">
-
-            <h3 className="text-lg font-semibold">Rewards</h3>
-
-            <Link
-              href={route("rewards.index")}
-              className="text-sm text-blue-600 font-semibold"
-            >
-              View All →
-            </Link>
-
-          </div>
-
-          <div className="flex gap-4 overflow-x-auto pb-2">
-
-            {previewRewards.map(reward => (
-
-              <div
-                key={reward.id}
-                className="min-w-[180px] bg-white rounded-xl shadow p-3"
-              >
-
-                <img
-                  src={reward.image
-                    ? `/storage/${reward.image}`
-                    : "https://via.placeholder.com/200"}
-                  className="w-full h-24 object-cover rounded-lg mb-2"
-                />
-
-                <h4 className="font-semibold text-sm">{reward.name}</h4>
-
-                <p className="text-xs text-gray-500">
-                  {reward.points_required} pts
-                </p>
-                
-                <Link
-                  href={route("rewards.index")}
-                  className="text-xs bg-[#1B1F5E] text-white px-3 py-1 rounded-lg text-center"
+                {/* Scan QR */}
+                <button
+                  onClick={() => setShowScanner(true)}
+                  className="w-10 h-10 bg-white/15 hover:bg-white/25 rounded-xl flex items-center justify-center text-lg transition-all active:scale-95"
+                  aria-label="Scan QR Code"
+                  title="Scan QR Code"
                 >
-                  View
+                  📷
+                </button>
+
+                {/* Profile */}
+                <Link
+                  href={route("profile.edit")}
+                  className="w-10 h-10 bg-white/15 hover:bg-white/25 rounded-xl flex items-center justify-center font-bold text-white text-sm transition-all active:scale-95"
+                  title="Profile"
+                >
+                  {initials(user.name)}
+                </Link>
+
+                {/* Logout */}
+                <Link
+                  href={route("logout")}
+                  method="post"
+                  as="button"
+                  className="w-10 h-10 bg-red-500/70 hover:bg-red-500 rounded-xl flex items-center justify-center text-white text-lg transition-all active:scale-95"
+                  title="Logout"
+                >
+                  🚪
                 </Link>
 
               </div>
-
-            ))}
-
-          </div>
-
-          {/* =====================================
-              RECENT ACTIVITY
-          ===================================== */}
-
-          <div className="mt-8">
-
-            <h3 className="text-lg font-semibold mb-3">
-              Recent Activity
-            </h3>
-
-            <div className="bg-white rounded-xl shadow divide-y">
-
-              {recentScans.length === 0 && (
-                <p className="p-4 text-sm text-gray-500">
-                  No scans yet.
-                </p>
-              )}
-
-              {recentScans.map(scan => (
-
-                <div
-                  key={scan.id}
-                  className="flex justify-between items-center p-4"
-                >
-
-                  <div>
-
-                    <p className="font-semibold text-sm">
-                      {scan.trash_event?.name ?? "Points acquired"}
-                    </p>
-
-                    <p className="text-xs text-gray-400">
-                      {new Date(scan.created_at).toLocaleString()}
-                    </p>
-
-                  </div>
-
-                  <span className="text-green-600 font-bold">
-                    +{scan.trash_event?.points ?? 0} pts
-                  </span>
-
-                </div>
-
-              ))}
-
             </div>
 
+
+            {/* ── POINTS CARD ── */}
+            <div className="bg-white/10 rounded-3xl p-5 mb-4 fade-up s1">
+              <p className="text-blue-200 text-xs font-semibold uppercase tracking-wider mb-1">Total Points</p>
+              <div className="flex items-end gap-2">
+                <p className="text-white text-5xl font-extrabold tabular-nums leading-none">
+                  {points.toLocaleString()}
+                </p>
+                <span className="text-blue-300 font-semibold text-base mb-1">pts</span>
+              </div>
+              {nextReward && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-blue-200 font-semibold">
+                      {(nextReward.points_required - points).toLocaleString()} pts to {nextReward.name}
+                    </span>
+                    <span className="text-blue-300">{Math.floor(nextPct)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-emerald-400 transition-all duration-700"
+                      style={{ width: `${nextPct}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── MAIN CONTENT ── */}
+        <div className="max-w-2xl mx-auto px-4 -mt-4 pb-10 space-y-6">
+
+          {/* ── PRIMARY ACTION: SCAN QR ── */}
+          <button
+            onClick={() => setShowScanner(true)}
+            className="fade-up s2 w-full bg-[#1B1F5E] text-white py-4 rounded-2xl font-extrabold text-base
+              shadow-lg shadow-[#1B1F5E]/30 hover:bg-[#2d3494] active:scale-[.98] transition-all duration-150
+              flex items-center justify-center gap-3"
+          >
+            <span className="text-2xl">📷</span>
+            Scan QR Code to Earn Points
+          </button>
+
+          {/* ── PROGRESS TO NEXT REWARD ── */}
+          {nextReward && (
+            <div className="fade-up s3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Next Reward</p>
+              <div className="flex gap-3 items-center">
+                <img
+                  src={nextReward.image ? `/storage/${nextReward.image}` : "https://placehold.co/64x64/e2e8f0/94a3b8?text=★"}
+                  alt={nextReward.name}
+                  className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+                  loading="lazy"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-extrabold text-[#1B1F5E] text-sm truncate">{nextReward.name}</p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    {(nextReward.points_required - points).toLocaleString()} pts away
+                  </p>
+                  <ProgressBar pct={nextPct} color={progressColor(nextPct)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── RECOMMENDED REWARD ── */}
+          {recommended && (
+            <div className={`fade-up s3 rounded-2xl border shadow-sm p-4 flex gap-3 items-center
+              ${recommended.canRedeem
+                ? "bg-emerald-50 border-emerald-200"
+                : "bg-white border-slate-100"}`}
+            >
+              <img
+                src={recommended.reward.image
+                  ? `/storage/${recommended.reward.image}`
+                  : "https://placehold.co/64x64/e2e8f0/94a3b8?text=🎁"}
+                alt={recommended.reward.name}
+                className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+                loading="lazy"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">
+                  {recommended.canRedeem ? "✨ Ready to Redeem" : "Recommended for You"}
+                </p>
+                <p className="font-extrabold text-[#1B1F5E] text-sm truncate">{recommended.reward.name}</p>
+                <p className="text-xs text-slate-400">{recommended.reward.points_required.toLocaleString()} pts required</p>
+              </div>
+              <Link
+                href={route("rewards.index")}
+                className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all
+                  ${recommended.canRedeem
+                    ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                    : "bg-[#1B1F5E] text-white hover:bg-[#2d3494]"}`}
+              >
+                {recommended.canRedeem ? "Redeem" : "View"}
+              </Link>
+            </div>
+          )}
+
+          {/* ── QUICK REWARDS ── */}
+          {previewRewards.length > 0 && (
+            <div className="fade-up s4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-extrabold text-[#1B1F5E] text-base">Quick Rewards</h3>
+                <Link href={route("rewards.index")}
+                  className="text-xs font-bold text-[#1B1F5E] hover:text-blue-700 transition-colors flex items-center gap-1">
+                  View All →
+                </Link>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 snap-x no-scrollbar">
+                {previewRewards.map((r) => (
+                  <div key={r.id} className="snap-start">
+                    <RewardCard reward={r} userPoints={points} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── RECENT ACTIVITY ── */}
+          <div className="fade-up s5">
+            <h3 className="font-extrabold text-[#1B1F5E] text-base mb-3">Recent Activity</h3>
+
+            {scans.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 text-center">
+                <p className="text-4xl mb-3">♻️</p>
+                <p className="font-bold text-slate-600">No activity yet</p>
+                <p className="text-sm text-slate-400 mt-1">Start scanning QR codes to earn points!</p>
+                <button
+                  onClick={() => setShowScanner(true)}
+                  className="mt-4 px-5 py-2.5 bg-[#1B1F5E] text-white text-xs font-bold rounded-xl hover:bg-[#2d3494] transition-all"
+                >
+                  Scan Now
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                {["Today", "Yesterday", "Earlier"].map((group) => {
+                  const items = grouped[group];
+                  if (!items?.length) return null;
+                  return (
+                    <div key={group}>
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{group}</p>
+                      </div>
+                      <div className="divide-y divide-slate-50 px-4">
+                        {items.map((scan) => <ActivityItem key={scan.id} scan={scan} />)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
         </div>
-
       </div>
 
-      {/* =====================================
-          SCANNER MODAL
-      ===================================== */}
-
+      {/* ── SCANNER MODAL ── */}
       {showScanner && (
-
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50">
-
-          <div className="bg-white p-4 rounded-xl w-[95%] max-w-sm text-center">
-
-            <h2 className="font-bold mb-3">Scan QR Code</h2>
-
-            <div id="reader" className="w-full"></div>
-
-            <button
-              onClick={closeScanner}
-              className="mt-4 bg-red-600 text-white px-4 py-2 rounded"
-            >
-              Close
-            </button>
-
-          </div>
-
-        </div>
-
+        <ScannerModal
+          onClose={() => setShowScanner(false)}
+          onSuccess={handleScanSuccess}
+          onError={(msg) => toast(msg, "error")}
+        />
       )}
 
-      {/* =====================================
-          SUCCESS MODAL
-      ===================================== */}
-
-      {scanSuccess && (
-
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-
-          <div className="bg-white p-6 rounded-xl text-center w-[90%] max-w-sm">
-
-            <h2 className="text-green-600 text-xl font-bold mb-3">
-              Scan Successful
-            </h2>
-
-            <p className="mb-2">{scanSuccess.event}</p>
-
-            <p className="mb-4 font-semibold">
-              +{scanSuccess.points} Points
-            </p>
-
-            <button
-              onClick={() => {
-                setScanSuccess(null);
-                router.reload();}}
-              className="bg-green-600 text-white px-5 py-2 rounded"
-            >
-              Done
-            </button>
-
-          </div>
-
-        </div>
-
+      {/* ── SUCCESS MODAL ── */}
+      {scanResult && (
+        <SuccessModal data={scanResult} onDone={handleSuccessDone} />
       )}
-
-      {/* =====================================
-          ERROR MODAL
-      ===================================== */}
-
-      {scanError && (
-
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-
-          <div className="bg-white p-6 rounded-xl text-center w-[90%] max-w-sm">
-
-            <h2 className="text-red-600 font-bold mb-3">
-              QR Scan Failed
-            </h2>
-
-            <p className="mb-4">{scanError}</p>
-
-            <button
-              onClick={() => setScanError(null)}
-              className="bg-red-600 text-white px-4 py-2 rounded"
-            >
-              OK
-            </button>
-
-          </div>
-
-        </div>
-
-      )}
-
     </>
   );
-
 }

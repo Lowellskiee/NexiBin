@@ -35,6 +35,10 @@ class RegisteredUserController extends Controller
                     ->numbers()
                     ->symbols(),
             ],
+            'student_number' => 'required|string',
+            'course' => 'required|string',
+            'year_level' => 'required|string',
+            'section' => 'required|string',
         ]);
 
         $user = User::create([
@@ -42,6 +46,10 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'user',
+            'student_number' => $request->student_number,
+            'course' => $request->course,
+            'year_level' => $request->year_level,
+            'section' => $request->section,
         ]);
 
         event(new Registered($user));

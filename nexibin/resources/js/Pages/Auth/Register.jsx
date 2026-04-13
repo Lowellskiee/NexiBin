@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Head, Link, useForm } from "@inertiajs/react";
 import { Eye, EyeOff } from "lucide-react";
+import { courses } from "@/data/courses";
+import Select from "react-select";
 
 export default function Register() {
 
@@ -9,11 +11,16 @@ export default function Register() {
         email: "",
         password: "",
         password_confirmation: "",
+        student_number: "",
+        course: "",
+        section: "",
     });
 
     const [showRules, setShowRules] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [searchCourse, setSearchCourse] = useState("");
+    const [showDropdown, setShowDropdown] = useState(false);
 
     const submit = (e) => {
         e.preventDefault();
@@ -28,7 +35,7 @@ export default function Register() {
     const hasLength = data.password.length >= 8;
     const hasUppercase = /[A-Z]/.test(data.password);
     const hasNumber = /[0-9]/.test(data.password);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(data.password);
+    const hasSpecial = /[!@#$%^&*()_+-={}|\:;"'<>,.?/~`]/.test(data.password);
 
     const passwordMatch =
         data.password && data.password === data.password_confirmation;
@@ -43,6 +50,10 @@ export default function Register() {
     ];
 
     const strengthWidth = (strengthScore / 4) * 100;
+
+    const filteredCourses = courses.filter((course) =>
+        course.label.toLowerCase().includes(searchCourse.toLowerCase())
+    );
 
     return (
         <>
@@ -123,6 +134,110 @@ export default function Register() {
                                     </p>
                                 )}
                             </div>
+                            
+                            {/* STUDENT NUMBER */}
+
+                            <div>
+                                <label className="text-xs text-gray-600">
+                                    Student Number
+                                </label>
+
+                                <input
+                                    type="text"
+                                    value={data.student_number}
+                                    onChange={(e) => setData("student_number", e.target.value)}
+                                    placeholder="Enter Student Number"
+                                    className="w-full mt-2 px-4 py-3 rounded-xl bg-gray-100 border border-gray-300"
+                                />
+
+                                {errors.student_number && (
+                                    <p className="text-xs text-red-500 mt-1">
+                                        {errors.student_number}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* YEAR LEVEL */}
+
+                            <div>
+                                <label className="text-xs text-gray-600">Year Level</label>
+
+                                <select
+                                    value={data.year_level}
+                                    onChange={(e) => setData("year_level", e.target.value)}
+                                    className="w-full mt-2 px-4 py-3 rounded-xl bg-gray-100 border border-gray-300"
+                                >
+                                    <option value="">Select Year</option>
+                                    <option value="1">1st Year</option>
+                                    <option value="2">2nd Year</option>
+                                    <option value="3">3rd Year</option>
+                                    <option value="4">4th Year</option>
+                                </select>
+                            </div>
+
+                            {/* COURSE */}
+                            <div>
+                                <div className="relative">
+                                    <label className="text-xs text-gray-600">Course</label>
+
+                                    <input
+                                        type="text"
+                                        value={searchCourse}
+                                        onChange={(e) => {
+                                            setSearchCourse(e.target.value);
+                                            setShowDropdown(true);
+                                        }}
+                                        onFocus={() => setShowDropdown(true)}
+                                        placeholder="Search course..."
+                                        className="w-full mt-2 px-4 py-3 rounded-xl bg-gray-100 border border-gray-300"
+                                    />
+
+                                    {/* DROPDOWN */}
+                                    {showDropdown && searchCourse && (
+                                        <div className="absolute z-10 w-full bg-white border rounded-xl mt-1 max-h-40 overflow-y-auto shadow">
+                                            {filteredCourses.length > 0 ? (
+                                                filteredCourses.map((course) => (
+                                                    <div
+                                                        key={course.value}
+                                                        onClick={() => {
+                                                            setSearchCourse(course.label);
+                                                            setData("course", course.value);
+                                                            setShowDropdown(false);
+                                                        }}
+                                                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                                                    >
+                                                        {course.label}
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="px-4 py-2 text-gray-400 text-sm">
+                                                    No results found
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {errors.course && (
+                                    <p className="text-xs text-red-500 mt-1">
+                                        {errors.course}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* SECTION */}
+
+                            <div>
+                                <label className="text-xs text-gray-600">Section</label>
+
+                                <input
+                                    type="text"
+                                    value={data.section}
+                                    onChange={(e) => setData("section", e.target.value)}
+                                    placeholder="e.g. BSCS 3A"
+                                    className="w-full mt-2 px-4 py-3 rounded-xl bg-gray-100 border border-gray-300"
+                                />
+                            </div>
+
 
                             {/* PASSWORD */}
 

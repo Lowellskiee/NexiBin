@@ -3,38 +3,39 @@ import laravel from 'laravel-vite-plugin';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
-    server: {
-        host: true,
-        port: 5173,
-        strictPort: true,
-        cors: true,
+const isNgrok = process.env.VITE_DEV_MODE === 'ngrok';
 
-        hmr: {
-            host: 'twiddly-unheatable-elenore.ngrok-free.dev',
-            protocol: 'wss',
-        },
-    },
+export default defineConfig({
+    server: isNgrok
+        ? {
+              host: true,
+              port: 5173,
+              strictPort: true,
+              cors: true,
+              hmr: {
+                  host: 'twiddly-unbeatable-elenore.ngrok-free.dev',
+                  protocol: 'wss',
+                  clientPort: 443,
+              },
+          }
+        : {
+              host: 'localhost',
+              port: 5173,
+          },
 
     plugins: [
         laravel({
             input: 'resources/js/app.jsx',
             refresh: true,
         }),
-
         react(),
-
         VitePWA({
             registerType: 'autoUpdate',
-            devOptions: {
-                enabled: true,
-            },
-
+            devOptions: { enabled: true },
             includeAssets: [
                 'pwa/icons/android/android-launchericon-192-192.png',
                 'pwa/icons/android/android-launchericon-512-512.png',
             ],
-
             manifest: {
                 name: 'NexiBin',
                 short_name: 'NexiBin',
@@ -43,7 +44,6 @@ export default defineConfig({
                 background_color: '#ffffff',
                 display: 'standalone',
                 start_url: '/',
-
                 icons: [
                     {
                         src: '/pwa/icons/android/android-launchericon-192-192.png',

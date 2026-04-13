@@ -4,16 +4,16 @@ import { Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 
 import {
-LineChart,
-Line,
-BarChart,
-Bar,
-XAxis,
-YAxis,
-Tooltip,
-CartesianGrid,
-ResponsiveContainer,
-Legend
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+  Legend,
 } from "recharts";
 
 /* ---------------------------
@@ -21,15 +21,15 @@ Helper Functions
 ----------------------------*/
 
 const getColor = (level) => {
-if (level >= 80) return "#ef4444";
-if (level >= 50) return "#f59e0b";
-return "#22c55e";
+  if (level >= 80) return "#ef4444";
+  if (level >= 50) return "#f59e0b";
+  return "#22c55e";
 };
 
-const getStatus = (level) => {
-if (level >= 80) return "Needs Collection";
-if (level >= 50) return "Almost Full";
-return "Normal";
+const getStatusLabel = (level) => {
+  if (level >= 80) return { text: "Needs Collection", cls: "text-red-500" };
+  if (level >= 50) return { text: "Almost Full", cls: "text-amber-500" };
+  return { text: "Normal", cls: "text-green-500" };
 };
 
 /* ---------------------------
@@ -37,73 +37,76 @@ Bin Card Component
 ----------------------------*/
 
 function BinCard({ bin, onClick }) {
+  const radius = 56;
+  const stroke = 10;
+  const normalizedRadius = radius - stroke;
+  const circumference = normalizedRadius * 2 * Math.PI;
+  const color = getColor(bin.level);
+  const strokeDashoffset = circumference - (bin.level / 100) * circumference;
+  const { text, cls } = getStatusLabel(bin.level);
 
-const radius = 70;
-const stroke = 12;
-const normalizedRadius = radius - stroke;
-const circumference = normalizedRadius * 2 * Math.PI;
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex flex-col items-center cursor-pointer hover:shadow-md active:scale-95 transition-all duration-150"
+    >
+      <h2 className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">
+        {bin.name}
+      </h2>
 
-const color = getColor(bin.level);
-const strokeDashoffset =
-circumference - (bin.level / 100) * circumference;
+      <div className="relative">
+        <svg height={radius * 2} width={radius * 2}>
+          <circle
+            stroke="#e5e7eb"
+            fill="transparent"
+            strokeWidth={stroke}
+            r={normalizedRadius}
+            cx={radius}
+            cy={radius}
+          />
+          <circle
+            stroke={color}
+            fill="transparent"
+            strokeWidth={stroke}
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            r={normalizedRadius}
+            cx={radius}
+            cy={radius}
+            transform={`rotate(-90 ${radius} ${radius})`}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+          <Trash2 size={20} color={color} />
+          <span className="text-base font-bold text-slate-700 tabular-nums">
+            {bin.level}%
+          </span>
+        </div>
+      </div>
 
-return (
+      <p className={`text-xs font-semibold mt-2 ${cls}`}>{text}</p>
+      <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-full">{bin.location}</p>
+    </div>
+  );
+}
 
-<div
-onClick={onClick}
-className="bg-white rounded-xl shadow p-4 sm:p-6 flex flex-col items-center cursor-pointer hover:shadow-lg transition"
->
+/* ---------------------------
+Custom Tooltip
+----------------------------*/
 
-<h2 className="text-sm text-gray-500 mb-4">{bin.name}</h2>
-
-<div className="relative">
-
-<svg height={radius * 2} width={radius * 2}>
-
-<circle
-stroke="#e5e7eb"
-fill="transparent"
-strokeWidth={stroke}
-r={normalizedRadius}
-cx={radius}
-cy={radius}
-/>
-
-<circle
-stroke={color}
-fill="transparent"
-strokeWidth={stroke}
-strokeDasharray={circumference}
-strokeDashoffset={strokeDashoffset}
-strokeLinecap="round"
-r={normalizedRadius}
-cx={radius}
-cy={radius}
-transform={`rotate(-90 ${radius} ${radius})`}
-/>
-
-</svg>
-
-<div className="absolute inset-0 flex flex-col items-center justify-center">
-
-<Trash2 size={30} color={color} />
-
-<span className="text-lg font-bold text-gray-700">
-{bin.level}%
-</span>
-
-</div>
-
-</div>
-
-<p className="text-xs text-gray-500 mt-2">
-{getStatus(bin.level)}
-</p>
-
-</div>
-
-);
-
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-[#1B1F5E] text-white text-xs rounded-lg px-3 py-2 shadow-lg">
+      <p className="font-semibold mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.dataKey}>
+          {p.name ?? p.dataKey}: <span className="font-bold">{p.value}</span>
+        </p>
+      ))}
+    </div>
+  );
 }
 
 /* ---------------------------
@@ -111,325 +114,286 @@ Staff Dashboard
 ----------------------------*/
 
 export default function StaffDashboard() {
+  const { auth, logs } = usePage().props;
+  const user = auth.user;
 
-const { auth, logs } = usePage().props;
-const user = auth.user;
+  const [bins, setBins] = useState([
+    { id: 1, name: "Dry Bin",      level: 30, location: "CCIS", lastCollected: "—" },
+    { id: 2, name: "Wet Bin",      level: 60, location: "CCIS", lastCollected: "—" },
+    { id: 3, name: "Metallic Bin", level: 90, location: "CCIS", lastCollected: "—" },
+  ]);
 
-const [bins, setBins] = useState([
-{ id:1,name:"Dry Bin",level:30,location:"CCIS",lastCollected:"-" },
-{ id:2,name:"Wet Bin",level:60,location:"CCIS",lastCollected:"-" },
-{ id:3,name:"Metallic Bin",level:90,location:"CCIS",lastCollected:"-" }
-]);
+  const [selectedBin, setSelectedBin] = useState(null);
+  const [showModal, setShowModal]     = useState(false);
+  const [trendData, setTrendData]     = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
 
-const [selectedBin,setSelectedBin] = useState(null);
-const [showModal,setShowModal] = useState(false);
+  /* ---------------------------
+  Generate Analytics from DB
+  ----------------------------*/
 
-const [trendData,setTrendData] = useState([]);
-const [monthlyData,setMonthlyData] = useState([]);
+  useEffect(() => {
+    const days   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-/* ---------------------------
-Generate Analytics from DB
-----------------------------*/
+    /* Weekly */
+    const counts = {};
+    logs.forEach((log) => {
+      const day = days[new Date(log.collected_at).getDay()];
+      counts[day] = (counts[day] || 0) + 1;
+    });
+    setTrendData(days.map((day) => ({ day, bins: counts[day] || 0 })));
 
-useEffect(()=>{
+    /* Monthly */
+    const mc = {};
+    months.forEach((m) => { mc[m] = { month: m, wet: 0, dry: 0, metallic: 0 }; });
+    logs.forEach((log) => {
+      const m = months[new Date(log.collected_at).getMonth()];
+      mc[m][log.bin_type]++;
+    });
+    setMonthlyData(Object.values(mc));
+  }, [logs]);
 
-/* WEEKLY TREND */
+  /* ---------------------------
+  Collect Bin
+  ----------------------------*/
 
-const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const counts = {};
+  const collectBin = (id) => {
+    const bin = bins.find((b) => b.id === id);
+    if (bin.level === 0) { alert("This bin has already been collected."); return; }
+    if (!window.confirm(`Collect ${bin.name} at ${bin.location}?`)) return;
 
-logs.forEach(log => {
+    let binType = "dry";
+    if (bin.name.toLowerCase().includes("wet"))      binType = "wet";
+    if (bin.name.toLowerCase().includes("metallic")) binType = "metallic";
 
-const date = new Date(log.collected_at);
-const day = days[date.getDay()];
+    router.post(
+      route("collect.bin"),
+      { bin: bin.name, location: bin.location, bin_type: binType },
+      {
+        onSuccess: () => {
+          const time = new Date().toLocaleString();
+          const updated = bins.map((b) =>
+            b.id === id ? { ...b, level: 0, lastCollected: time } : b
+          );
+          setBins(updated);
+          setSelectedBin(updated.find((b) => b.id === id));
+        },
+      }
+    );
+  };
 
-counts[day] = (counts[day] || 0) + 1;
+  /* ---------------------------
+  Derived Stats
+  ----------------------------*/
 
-});
+  const binsNeedingCollection = bins.filter((b) => b.level >= 80).length;
+  const avgLevel = Math.round(bins.reduce((a, b) => a + b.level, 0) / bins.length);
 
-const weekly = days.map(day => ({
-day,
-bins: counts[day] || 0
-}));
+  /* ---------------------------
+  UI
+  ----------------------------*/
 
-setTrendData(weekly);
+  return (
+    <>
+      <Head title="Staff Dashboard" />
 
-/* MONTHLY DATA */
+      <div className="max-w-screen-xl mx-auto px-3 sm:px-6 md:px-8 py-5 md:py-8 overflow-x-hidden space-y-5 md:space-y-8">
 
-const months = [
-"Jan","Feb","Mar","Apr","May","Jun",
-"Jul","Aug","Sep","Oct","Nov","Dec"
-];
+        {/* ── Header ── */}
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">
+            Smart Waste Monitoring
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">Welcome, {user.name}</p>
+        </div>
 
-const monthlyCounts = {};
+        {/* ── Analytics Cards ── */}
+        <div className="grid grid-cols-3 gap-3 md:gap-6">
+          <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="text-[10px] md:text-sm text-slate-400 uppercase tracking-wide font-semibold">Total Bins</h3>
+            <p className="text-2xl md:text-3xl font-bold text-[#1B1F5E] mt-1 tabular-nums">{bins.length}</p>
+          </div>
+          <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="text-[10px] md:text-sm text-slate-400 uppercase tracking-wide font-semibold leading-tight">Needs Collection</h3>
+            <p className="text-2xl md:text-3xl font-bold text-red-500 mt-1 tabular-nums">{binsNeedingCollection}</p>
+          </div>
+          <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+            <h3 className="text-[10px] md:text-sm text-slate-400 uppercase tracking-wide font-semibold leading-tight">Avg Fill</h3>
+            <p className="text-2xl md:text-3xl font-bold text-[#1B1F5E] mt-1 tabular-nums">{avgLevel}%</p>
+          </div>
+        </div>
 
-months.forEach(month => {
-monthlyCounts[month] = {month,wet:0,dry:0,metallic:0};
-});
+        {/* ── Bin Grid ── */}
+        <div>
+          <h2 className="text-sm md:text-base font-bold text-slate-700 mb-3">Bin Status</h2>
+          <div className="grid grid-cols-3 gap-3 md:gap-6">
+            {bins.map((bin) => (
+              <BinCard
+                key={bin.id}
+                bin={bin}
+                onClick={() => { setSelectedBin(bin); setShowModal(true); }}
+              />
+            ))}
+          </div>
+        </div>
 
-logs.forEach(log => {
+        {/* ── Weekly Trend ── */}
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h2 className="text-sm md:text-base font-semibold text-slate-700 mb-4">
+            Collection Trend (Weekly)
+          </h2>
+          <div className="h-[200px] md:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="bins"
+                  stroke="#1B1F5E"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#1B1F5E" }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-const date = new Date(log.collected_at);
-const month = months[date.getMonth()];
+        {/* ── Monthly by Type ── */}
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h2 className="text-sm md:text-base font-semibold text-slate-700 mb-4">
+            Monthly Collection by Type
+          </h2>
+          <div className="h-[200px] md:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
+                  iconSize={10}
+                />
+                <Bar dataKey="wet"      stackId="a" fill="#22c55e" radius={[0,0,0,0]} />
+                <Bar dataKey="dry"      stackId="a" fill="#3b82f6" radius={[0,0,0,0]} />
+                <Bar dataKey="metallic" stackId="a" fill="#f59e0b" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-monthlyCounts[month][log.bin_type]++;
+      </div>
 
-});
+      {/* ── Modal (bottom sheet on mobile, centered on desktop) ── */}
+      {showModal && selectedBin && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:w-[90%] sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl p-5 relative
+              animate-[slideUp_0.25s_ease]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drag handle (mobile) */}
+            <div className="sm:hidden w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
 
-setMonthlyData(Object.values(monthlyCounts));
+            <button
+              onClick={() => setShowModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition text-sm"
+            >
+              ✕
+            </button>
 
-},[logs]);
+            <h2 className="text-base md:text-lg font-semibold text-slate-800 mb-4 pr-8">
+              {selectedBin.name} Details
+            </h2>
 
-/* ---------------------------
-Collect Bin
-----------------------------*/
+            {/* Fill level bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <span>Fill Level</span>
+                <span className="font-semibold" style={{ color: getColor(selectedBin.level) }}>
+                  {selectedBin.level}%
+                </span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${selectedBin.level}%`,
+                    backgroundColor: getColor(selectedBin.level),
+                  }}
+                />
+              </div>
+            </div>
 
-const collectBin = (id) => {
+            <div className="space-y-2 text-sm text-slate-600">
+              <div className="flex justify-between py-2 border-b border-slate-50">
+                <span className="text-slate-400">Status</span>
+                <span className={`font-semibold ${getStatusLabel(selectedBin.level).cls}`}>
+                  {getStatusLabel(selectedBin.level).text}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-slate-50">
+                <span className="text-slate-400">Location</span>
+                <span className="font-medium">{selectedBin.location}</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-400">Last Collected</span>
+                <span className="font-medium">{selectedBin.lastCollected}</span>
+              </div>
+            </div>
 
-const bin = bins.find(b => b.id === id);
+            <button
+              onClick={() => collectBin(selectedBin.id)}
+              className="mt-5 w-full py-3 rounded-xl text-white font-semibold bg-green-600 hover:bg-green-700 active:scale-95 transition-all duration-150 text-sm"
+            >
+              Collect Bin
+            </button>
+          </div>
+        </div>
+      )}
 
-if (bin.level === 0) {
-alert("This bin has already been collected.");
-return;
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        @media (min-width: 640px) {
+          @keyframes slideUp {
+            from { transform: translateY(16px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+          }
+        }
+      `}</style>
+    </>
+  );
 }
 
-const confirmCollect = window.confirm(
-`Collect ${bin.name} located at ${bin.location}?`
-);
-
-if (!confirmCollect) return;
-
-/* detect bin type */
-
-let binType = "dry";
-
-if (bin.name.toLowerCase().includes("wet")) binType = "wet";
-if (bin.name.toLowerCase().includes("metallic")) binType = "metallic";
-
-/* send request to Laravel */
-
-router.post(route("collect.bin"), {
-
-bin: bin.name,
-location: bin.location,
-bin_type: binType
-
-},{
-onSuccess: () => {
-
-const time = new Date().toLocaleString();
-
-const updatedBins = bins.map(b => {
-
-if (b.id === id) {
-return {
-...b,
-level: 0,
-lastCollected: time
-};
-}
-
-return b;
-
-});
-
-setBins(updatedBins);
-setSelectedBin(updatedBins.find(b => b.id === id));
-
-}
-});
-
-};
-
-/* ---------------------------
-Analytics Cards
-----------------------------*/
-
-const binsNeedingCollection = bins.filter(bin=>bin.level>=80).length;
-
-const avgLevel = Math.round(
-bins.reduce((a,b)=>a+b.level,0)/bins.length
-);
-
-/* ---------------------------
-UI
-----------------------------*/
-
-return(
-
-<>
-
-<Head title="Staff Dashboard"/>
-
-<h1 className="text-2xl font-bold text-gray-800">
-Smart Waste Monitoring
-</h1>
-
-<p className="text-gray-600 mb-8">
-Welcome, {user.name}
-</p>
-
-{/* Analytics Cards */}
-
-<div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-
-<div className="bg-white p-6 rounded-xl shadow">
-<h3 className="text-gray-500 text-sm">Total Bins</h3>
-<p className="text-2xl font-bold">{bins.length}</p>
-</div>
-
-<div className="bg-white p-6 rounded-xl shadow">
-<h3 className="text-gray-500 text-sm">Needs Collection</h3>
-<p className="text-2xl font-bold text-red-500">
-{binsNeedingCollection}
-</p>
-</div>
-
-<div className="bg-white p-6 rounded-xl shadow">
-<h3 className="text-gray-500 text-sm">Average Fill Level</h3>
-<p className="text-2xl font-bold">{avgLevel}%</p>
-</div>
-
-</div>
-
-{/* Weekly Trend */}
-
-<div className="bg-white p-6 rounded-xl shadow mb-10">
-
-<h2 className="text-lg font-semibold mb-4">
-Waste Collection Trend (Weekly)
-</h2>
-
-<ResponsiveContainer width="100%" height={300}>
-
-<LineChart data={trendData}>
-
-<CartesianGrid strokeDasharray="3 3"/>
-
-<XAxis dataKey="day"/>
-
-<YAxis allowDecimals={false}/>
-
-<Tooltip/>
-
-<Line
-type="monotone"
-dataKey="bins"
-stroke="#1B1F5E"
-strokeWidth={3}
-/>
-
-</LineChart>
-
-</ResponsiveContainer>
-
-</div>
-
-{/* Monthly Waste Type Chart */}
-
-<div className="bg-white p-6 rounded-xl shadow mb-10">
-
-<h2 className="text-lg font-semibold mb-4">
-Monthly Waste Collection by Type
-</h2>
-
-<ResponsiveContainer width="100%" height={300}>
-
-<BarChart data={monthlyData}>
-
-<CartesianGrid strokeDasharray="3 3"/>
-
-<XAxis dataKey="month"/>
-
-<YAxis allowDecimals={false}/>
-
-<Tooltip/>
-
-<Legend/>
-
-<Bar dataKey="wet" stackId="a" fill="#22c55e"/>
-
-<Bar dataKey="dry" stackId="a" fill="#3b82f6"/>
-
-<Bar dataKey="metallic" stackId="a" fill="#f59e0b"/>
-
-</BarChart>
-
-</ResponsiveContainer>
-
-</div>
-
-{/* Bin Grid */}
-
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-
-{bins.map(bin=>(
-<BinCard
-key={bin.id}
-bin={bin}
-onClick={()=>{
-setSelectedBin(bin);
-setShowModal(true);
-}}
-/>
-))}
-
-</div>
-
-{/* Modal */}
-
-{showModal && selectedBin && (
-
-<div
-className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-onClick={()=>setShowModal(false)}
->
-
-<div
-className="bg-white w-[90%] max-w-md rounded-xl shadow-lg p-6 relative"
-onClick={(e)=>e.stopPropagation()}
->
-
-<button
-onClick={()=>setShowModal(false)}
-className="absolute top-3 right-3"
->
-✕
-</button>
-
-<h2 className="text-xl font-semibold mb-4">
-{selectedBin.name} Details
-</h2>
-
-<div className="space-y-2 text-gray-600">
-
-<p><strong>Fill Level:</strong> {selectedBin.level}%</p>
-
-<p><strong>Status:</strong> {getStatus(selectedBin.level)}</p>
-
-<p><strong>Location:</strong> {selectedBin.location}</p>
-
-<p><strong>Last Collected:</strong> {selectedBin.lastCollected}</p>
-
-</div>
-
-<button
-onClick={()=>collectBin(selectedBin.id)}
-className="mt-6 w-full px-4 py-2 rounded text-white bg-green-600 hover:bg-green-700"
->
-Collect Bin
-</button>
-
-</div>
-
-</div>
-
-)}
-
-</>
-
-);
-
-}
-
-StaffDashboard.layout = page => <StaffLayout>{page}</StaffLayout>;
+StaffDashboard.layout = (page) => <StaffLayout>{page}</StaffLayout>;

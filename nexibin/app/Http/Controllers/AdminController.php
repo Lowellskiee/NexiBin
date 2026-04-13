@@ -30,6 +30,13 @@ class AdminController extends Controller
         $totalAdmins = User::where('role', 'admin')->count();
 
         $totalRedemptions = RewardRedemption::count();
+        
+        $bins = [
+            ['fill_percentage' => 30],
+            ['fill_percentage' => 60],
+            ['fill_percentage' => 90],
+        ];
+
 
 
         /* -----------------------------
@@ -117,10 +124,13 @@ class AdminController extends Controller
             'activity' => $activity,
 
             // Waste analytics
-            'logs' => $logs
+            'logs' => $logs,
+
+            'bins' => $bins,
 
         ]);
     }
+
 
 
     /*

@@ -6,6 +6,7 @@ use App\Models\CollectionLog;
 use App\Http\Controllers\QRController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\RewardManagementController;
+use App\Http\Controllers\Admin\RedemptionController;
 use App\Http\Controllers\RewardController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\ScanController;
@@ -128,11 +129,14 @@ Route::middleware(['auth','admin'])->group(function () {
     Route::post('/admin/rewards', [RewardManagementController::class, 'store'])
         ->name('admin.rewards.store');
 
-    Route::put('/admin/rewards/{reward}', [RewardManagementController::class, 'update'])
+    Route::post('/admin/rewards/{reward}', [RewardManagementController::class, 'update'])
         ->name('admin.rewards.update');
 
     Route::delete('/admin/rewards/{reward}', [RewardManagementController::class, 'destroy'])
         ->name('admin.rewards.delete');
+
+    Route::get('/admin/redemptions', [RedemptionController::class, 'index'])
+        ->name('admin.redemptions.index');
 
 });
 

@@ -15,6 +15,7 @@ class Reward extends Model
         'points_required',
         'stock',
         'is_active',
+        'image',
     ];
 
     protected $casts = [
@@ -22,4 +23,13 @@ class Reward extends Model
         'points_required' => 'integer',
         'stock' => 'integer',
     ];
+
+    /* ================= IMAGE URL ACCESSOR ================= */
+
+    public function getImageUrlAttribute()
+    {
+        return $this->image
+            ? asset('storage/' . $this->image)
+            : null;
+    }
 }
